@@ -1,36 +1,49 @@
-# This is a basic workflow to help you get started with Actions
+name: Go CI Pipeline
 
-name: CI
-
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the "main" branch
   push:
-    branches: [ "main" ]
+    branches: [main]
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
 
-  # Allows you to run this workflow manually from the Actions tab
-  workflow_dispatch:
-
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
-  build:
-    # The type of runner that the job will run on
+  build-test:
     runs-on: ubuntu-latest
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      # Runs a single command using the runners shell
-      - name: Run a one-line script
-        run: echo Hello, world!
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
 
-      # Runs a set of commands using the runners shell
-      - name: Run a multi-line script
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+
+      - name: Build project
+        run: go build ./...
+
+      - name: Run tests with coverage
+        run: go test ./... -v -coverprofile=coverage.out
+
+      - name: Show coverage
+        run: go tool cover -func=coverage.out
+
+      - name: Fail if coverage < 80%
         run: |
-          echo Add other actions to build,
-          echo test, and deploy your project.
+          COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          echo "Total coverage: $COVERAGE%"
+
+          if [ $(echo "$COVERAGE < 80" | bc) -eq 1 ]; then
+            echo "❌ Coverage is below 80%"
+            exit 1
+          else
+            echo "✅ Coverage requirement satisfied"
+          fi
